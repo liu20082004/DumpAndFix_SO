@@ -5,6 +5,7 @@ import os
 import socket
 import re
 import time
+import ADB_SHELL
 
 def adbConnect():
 	s = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
@@ -104,18 +105,15 @@ def getSOAddrByName(SOName,buf):
 			addr = item[0].split('-')
 			for i in addr:
 				addrs.append(i)
-		# item = eachline.split()
-		# if SOName in item[-1]:
-		# 	addr = item[0].split('-')
-		# 	for i in addr:
-		# 		addrs.append(i)
-	addrStart = int(addrs[0],16)
-	addrEnd = int(addrs[-1],16)
-	size = addrEnd - addrStart
-	return addrStart,size
+	if addrs == []:  # 当地址为空的时候,提示找不到目标动态库
+		return [0,0]
+	else:
+		addrStart = int(addrs[0],16)
+		addrEnd = int(addrs[-1],16)
+		size = addrEnd - addrStart
+		return addrStart,size
 
-def main():
-	# appName = 'com.obdstar.x300dp'
+def main111():
 	"""
 	unknown option -- c
 	Usage: su [options] [args...]
@@ -175,21 +173,25 @@ def main():
 	adb_pull.wait()
 	#print adb_pull.stdout
 
-	#s = adbConnect()
-	#req_msg = 'sync:/sdcard/dump.so d:\\'
-	#s.sendall('%04x' % (len(req_msg)))
-	#s.sendall(req_msg)
-	#
-	#i=0
-	#newbuf=''
-	#while i<20:
-	#	buf = adbshellRecv(s)
-	#	newbuf = newbuf+buf
-	#	i=i+1
-	#
-	##time.sleep(30)
-	##newbuf = adbshellRecv(s)
-	#print newbuf
+def main():
+	app_names = ['com.obdstar.x300dp', 'com.xtooltech.PS60', 'com.xtooltech.i80PAD']
+	my_adbshell_server = ADB_SHELL.adbShell()
+	print 'open adb shell'
+	my_adbshell_server.adb_server('')
+	recvbuf = my_adbshell_server.adb_server('su -c ps')
+	for appName in app_names:
+		pid = findPIDFromAppname(appName,recvbuf)
+		if 0 != pid:
+			break
+	if 0 == pid :
+		print 'Can find any apps!'
+		return
+
+	 #获取目标内存地址
+	strGetMem = 'su -c ' + 'cat /proc/%s/maps' %(pid)
+	recvbuf = my_adbshell_server.adb_server(strGetMem)
+	print recvbuf
+
 
 if __name__ == '__main__' :
 	main()
