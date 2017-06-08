@@ -80,13 +80,16 @@ def findPIDFromAppname(appname,buf):
 	buf = buf.split('\r\n')
 	# 走简易方法(强行按这种格式来划分): USER     PID   PPID  VSIZE RSS   %sWCHAN    PC         NAME\n
 	# 发现简易方法行不通啊,因为每个系统,对ps指令回复是不一样的,不能一概而论
+	position = 0xff
+	if 'PID' in buf[0]:
+		position = buf[0].split().index('PID')
 	pid = 0
 	for eachline in buf:
 		if '' == eachline:
 			continue
 		item = eachline.split()
 		if appname == item[-1]:
-			pid = item[1]
+			pid = item[position]
 			break
 	return pid
 
@@ -96,23 +99,43 @@ def getSOAddrByName(SOName,buf):
 	for eachline in buf:
 		if '' == eachline:
 			continue
-		item = eachline.split()
-		if SOName in item[-1]:
+		if -1 != eachline.find(SOName) :
+			item = eachline.split()
 			addr = item[0].split('-')
 			for i in addr:
 				addrs.append(i)
+		# item = eachline.split()
+		# if SOName in item[-1]:
+		# 	addr = item[0].split('-')
+		# 	for i in addr:
+		# 		addrs.append(i)
 	addrStart = int(addrs[0],16)
 	addrEnd = int(addrs[-1],16)
 	size = addrEnd - addrStart
 	return addrStart,size
 
 def main():
-	#appName = 'com.obdstar.x300dp'
+	# appName = 'com.obdstar.x300dp'
+	"""
+	unknown option -- c
+	Usage: su [options] [args...]
+	Options:
+		-c, --command COMMAND         pass COMMAND to the invoked shell
+		-cn, --context CONTEXT        switch to SELinux CONTEXT before invoking
+		-d, -ad, --daemon, --auto-daemon
+					start the su daemon
+		-i, --install                 check and repair su files
+		-h, --help                    display this help message and exit
+		-v, -V, --version             display version number and exit
+	Usage#2: su uid COMMAND...
+	"""
+
 	appNames = ['com.obdstar.x300dp', 'com.xtooltech.PS60', 'com.xtooltech.i80PAD']
 
 	adbServer('')
-	adbServer('su')
-	recvbuf = adbServer('ps')
+	a = adbServer('su')
+	print a
+	recvbuf = adbServer('su -c ps')
 
 	for appName in appNames:
 		pid = findPIDFromAppname(appName,recvbuf)
@@ -122,18 +145,20 @@ def main():
 		print 'Can find any apps!'
 		return
 
-	#获取目标内存地址
-	strGetMem = 'cat /proc/%s/maps' %(pid)
+	 #获取目标内存地址
+	strGetMem = 'su -c ' + 'cat /proc/%s/maps' %(pid)
 
 	recvbuf = adbServer(strGetMem)
-	#print recvbuf
+	# print recvbuf
 
-	bassAddr,size = getSOAddrByName('libscan.so',recvbuf)
-	#bassAddr, size = getSOAddrByName('Diag.so', recvbuf)
+	if appName == 'com.obdstar.x300dp':
+		bassAddr, size = getSOAddrByName('Diag.so', recvbuf)
+	else:
+		bassAddr, size = getSOAddrByName('libscan.so', recvbuf)
 	print bassAddr,size
 
-	#strDD = 'dd if=/proc/%s/mem of=/sdcard/dump.so skip=%s ibs=1 count=%s' %(pid,bassAddr,size)
-	strDD = 'dd if=/proc/%s/mem of=/sdcard/dump.so skip=%s ibs=1 count=%s' % (pid, bassAddr, size)
+	# strDD = 'dd if=/proc/%s/mem of=/sdcard/dump.so skip=%s ibs=1 count=%s' %(pid,bassAddr,size)
+	strDD = 'su -c dd if=/proc/%s/mem of=/sdcard/dump.so skip=%s ibs=1 count=%s' % (pid, bassAddr, size)
 	print strDD
 	#recvbuf = adbServer(strDD)
 
@@ -145,21 +170,26 @@ def main():
 	s.close()
 	time.sleep(5)
 
-	s = adbConnect()
-	req_msg = 'sync:/sdcard/dump.so d:\\'
-	s.sendall('%04x' % (len(req_msg)))
-	s.sendall(req_msg)
+	# 偷懒了就直接用系统调用adb的pull命令把文件传上来
+	adb_pull = subprocess.Popen(['adb','pull','/sdcard/dump.so','d:\\'])
+	adb_pull.wait()
+	#print adb_pull.stdout
 
-	i=0
-	newbuf=''
-	while i<20:
-		buf = adbshellRecv(s)
-		newbuf = newbuf+buf
-		i=i+1
-
-	#time.sleep(30)
-	#newbuf = adbshellRecv(s)
-	print newbuf
+	#s = adbConnect()
+	#req_msg = 'sync:/sdcard/dump.so d:\\'
+	#s.sendall('%04x' % (len(req_msg)))
+	#s.sendall(req_msg)
+	#
+	#i=0
+	#newbuf=''
+	#while i<20:
+	#	buf = adbshellRecv(s)
+	#	newbuf = newbuf+buf
+	#	i=i+1
+	#
+	##time.sleep(30)
+	##newbuf = adbshellRecv(s)
+	#print newbuf
 
 if __name__ == '__main__' :
 	main()
