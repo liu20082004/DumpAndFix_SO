@@ -7,75 +7,6 @@ import re
 import time
 import ADB_SHELL
 
-def adbConnect():
-	s = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
-	s.settimeout(10)
-	while True :
-		try :
-			s.connect(('127.0.0.1',5037))
-		except :
-			os.system('adb start-server')
-			continue
-		else :
-			break
-	req_msg = 'host:transport-any'
-	s.sendall('%04x' %(len(req_msg)))
-	s.sendall(req_msg)
-	resp = s.recv(4)
-	if 'OKAY'!=resp :
-		s = None
-	return s
-
-def adbshellCMD(socket,CMD) :
-	req_msg = 'shell:%s' %(CMD)
-	socket.sendall('%04x' %(len(req_msg)))
-	socket.sendall(req_msg)
-
-def adbshellRecv(socket) :
-	result = socket.recv(4)
-	if 'OKAY'!=result :
-		return None
-	else:
-		buf='' #以字符串的形式呈现
-		while True :
-			try :
-				resp = socket.recv(4096)
-			except :
-				break
-			else:
-				if 0 == len(resp):  # recv函数返回值为字符串,只能通过判断字符串长度来确定是否有数据接收
-					break
-				else:
-					#buf.append(resp)
-					buf += resp
-		return buf
-
-def findPIDFromCOMMAND( command , data ) :
-	bufs = []
-	for buf in data : #这个循环处理ps得到的数据
-		#print str
-		if ''!=buf :
-			psTab = {}
-			str = buf.split()
-			psTab['PID'] = str[0]
-			psTab['USER'] = str[1]
-			psTab['TIME'] = str[2]
-			psTab['COMMAND'] = ''
-			for i in range(3,len(str)) :
-				psTab['COMMAND'] += str[i] + ' '
-			#print psTab
-			bufs.append(psTab)
-	result = []
-	for item in bufs :
-		if command in item['COMMAND'] :
-			result.append( item )
-	return result
-
-def adbServer(command):
-	s = adbConnect()
-	adbshellCMD(s, command)
-	recv = adbshellRecv(s)
-	return recv
 
 def findPIDFromAppname(appname,buf):
 	buf = buf.split('\r\n')
@@ -113,9 +44,24 @@ def getSOAddrByName(SOName,buf):
 		size = addrEnd - addrStart
 		return addrStart,size
 
-def main111():
+
+def get_target_info():
+	"""从配置文件中获取目标app信息"""
+	target_info = []
+	try:
+		targetfile = open('target.ini', 'r')
+		data = targetfile.readlines()
+		targetfile.close()
+	except IOError, e:
+		return 1, e
+	for eachline in data:
+		target_info.append(eachline.strip().split('\t'))
+	return 0, target_info
+
+
+def main():
+
 	"""
-	unknown option -- c
 	Usage: su [options] [args...]
 	Options:
 		-c, --command COMMAND         pass COMMAND to the invoked shell
@@ -128,83 +74,40 @@ def main111():
 	Usage#2: su uid COMMAND...
 	"""
 
-	appNames = ['com.obdstar.x300dp', 'com.xtooltech.PS60', 'com.xtooltech.i80PAD']
-
-	adbServer('')
-	a = adbServer('su')
-	print a
-	recvbuf = adbServer('su -c ps')
-
-	for appName in appNames:
-		pid = findPIDFromAppname(appName,recvbuf)
-		if 0 != pid:
-			break
-	if 0 == pid :
-		print 'Can find any apps!'
-		return
-
-	 #获取目标内存地址
-	strGetMem = 'su -c ' + 'cat /proc/%s/maps' %(pid)
-
-	recvbuf = adbServer(strGetMem)
-	# print recvbuf
-
-	if appName == 'com.obdstar.x300dp':
-		bassAddr, size = getSOAddrByName('Diag.so', recvbuf)
-	else:
-		bassAddr, size = getSOAddrByName('libscan.so', recvbuf)
-	print bassAddr,size
-
-	# strDD = 'dd if=/proc/%s/mem of=/sdcard/dump.so skip=%s ibs=1 count=%s' %(pid,bassAddr,size)
-	strDD = 'su -c dd if=/proc/%s/mem of=/sdcard/dump.so skip=%s ibs=1 count=%s' % (pid, bassAddr, size)
-	print strDD
-	#recvbuf = adbServer(strDD)
-
-	s = adbConnect()
-	adbshellCMD(s, strDD)
-	time.sleep(20)
-	recv = adbshellRecv(s)
-	print recv
-	s.close()
-	time.sleep(5)
-
-	# 偷懒了就直接用系统调用adb的pull命令把文件传上来
-	adb_pull = subprocess.Popen(['adb','pull','/sdcard/dump.so','d:\\'])
-	adb_pull.wait()
-	#print adb_pull.stdout
-
-def main():
-	app_names = ['com.obdstar.x300dp', 'com.xtooltech.PS60', 'com.xtooltech.i80PAD']
+	# 从配置文件中获取目标信息
+	result, target_info = get_target_info()
+	# 实例化adbshell
 	my_adbshell_server = ADB_SHELL.adbShell()
 
-	print 'open adb shell'
+	print '>>>>open adb shell'
 	result, recvbuf = my_adbshell_server.adb_server('')
 	if 1 == result:
 		print recvbuf
 		return
 
-	print 'switch to super user'
+	print '>>>>switch to super user'
 	result, recvbuf = my_adbshell_server.adb_server('su')
 	if 1 == result:
 		print recvbuf
 		return
 
-	print 'get list of apps'
+	print '>>>>get list of apps'
 	result, recvbuf = my_adbshell_server.adb_server('su -c ps')
 	if 1 == result:
 		print recvbuf
 		return
 	else:
-		print 'search for target~s pid'
-		for appname in app_names:
-			pid = findPIDFromAppname(appname, recvbuf)
+		print '>>>>search for target~s pid'
+		for target in target_info:
+			pid = findPIDFromAppname(target[0], recvbuf)
 			if 0 != pid:
 				break
 		if 0 == pid :
-			print 'Can find any apps!'
+			print '    Can find any apps!'
 			return
+		print '    %s is found!' %(target[0])
 
-	print 'get target~s memory'
+	print '>>>>get target~s memory'
 	 #获取目标内存地址
 	strGetMem = 'su -c ' + 'cat /proc/%s/maps' %(pid)
 	result, recvbuf = my_adbshell_server.adb_server(strGetMem)
@@ -212,27 +115,24 @@ def main():
 		print recvbuf
 		return
 	else:
-		print 'search for the address and size of target~s sofile'
-		if appname == 'com.obdstar.x300dp':
-			bassAddr, size = getSOAddrByName('Diag.so', recvbuf)
-		else:
-			bassAddr, size = getSOAddrByName('libscan.so', recvbuf)
+		print '>>>>search for the address and size of %s' %(target[1])
+		bassAddr, size = getSOAddrByName(target[1], recvbuf)
 		if (0 == bassAddr) and (0 == size):
-			print 'can found the sofile'
+			print '    can found the sofile'
 			return
+		print '    %s~s address = %d\n    %s~s size = %d' %(target[1], bassAddr, target[1], size)
 
-	print 'dump!'
-	# strDD = 'dd if=/proc/%s/mem of=/sdcard/dump.so skip=%s ibs=1 count=%s' %(pid,bassAddr,size)
+	print '>>>>dump!'
 	strDD = 'su -c dd if=/proc/%s/mem of=/sdcard/dump.so skip=%s ibs=1 count=%s' % (pid, bassAddr, size)
-	s = adbConnect()
-	adbshellCMD(s, strDD)
-	time.sleep(20)
-	recv = adbshellRecv(s)
-	print recv
-	s.close()
-	time.sleep(5)
+	result, recvbuf = my_adbshell_server.adb_server(strDD)
+	if 1 == result:
+		print recvbuf
+		return
+	print recvbuf
+	# 通过20s的延时来等待DD指令的完成
+	#time.sleep(20)
 
-	print u'adb pull to d:\\'
+	print u'>>>>adb pull to d:\\'
 	# 偷懒了就直接用系统调用adb的pull命令把文件传上来
 	try:
 		adb_pull = subprocess.Popen(['adb','pull','/sdcard/dump.so','d:\\'])

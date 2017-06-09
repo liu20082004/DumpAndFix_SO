@@ -7,14 +7,14 @@ import socket
 class adbShell():
 	"""adb shell的类"""
 
-	#def __init__(self):
+	# def __init__(self):
 	#	resp = self.adb_connect()
 	#	if 'OKAY' != resp:
 	#		self.is_connected = False
 	#	else:
 	#		self.is_connected = True
 
-	#def is_connect_to_device(self):
+	# def is_connect_to_device(self):
 	#	return self.is_connected
 
 	def adb_send_command(self, command):
@@ -37,11 +37,16 @@ class adbShell():
 		if 'OKAY' != resp:
 			return 1, resp
 		rbuf = ''  # 以字符串的形式呈现
+		count = 0
 		while True:
 			try:
 				resp = self.adb_recvice(4096)
 			except socket.error, e:
-				break
+				if 5 == count:
+					break  # 超时的时候也退出
+				else:
+					count += 1  # 多等几次吧
+					continue
 			else:
 				if 0 == len(resp):  # recv函数返回值为字符串,只能通过判断字符串长度来确定是否有数据接收
 					break
@@ -52,7 +57,7 @@ class adbShell():
 	def adb_connect(self):
 		"""创建链接"""
 		self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-		self.socket.settimeout(10)
+		self.socket.settimeout(5)
 		count = 0
 		while True:
 			try:
