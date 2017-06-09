@@ -6,7 +6,7 @@ import socket
 import re
 import time
 import ADB_SHELL
-
+import Fix_SO
 
 def findPIDFromAppname(appname,buf):
 	buf = buf.split('\r\n')
@@ -57,6 +57,9 @@ def get_target_info():
 	for eachline in data:
 		target_info.append(eachline.strip().split('\t'))
 	return 0, target_info
+
+def fix_sofile(file_in, file_out, address_base):
+	pass
 
 
 def main():
@@ -116,14 +119,14 @@ def main():
 		return
 	else:
 		print '>>>>search for the address and size of %s' %(target[1])
-		bassAddr, size = getSOAddrByName(target[1], recvbuf)
-		if (0 == bassAddr) and (0 == size):
+		base_address, size = getSOAddrByName(target[1], recvbuf)
+		if (0 == base_address) and (0 == size):
 			print '    can found the sofile'
 			return
-		print '    %s~s address = %d\n    %s~s size = %d' %(target[1], bassAddr, target[1], size)
+		print '    %s~s address = %d\n    %s~s size = %d' %(target[1], base_address, target[1], size)
 
 	print '>>>>dump!'
-	strDD = 'su -c dd if=/proc/%s/mem of=/sdcard/dump.so skip=%s ibs=1 count=%s' % (pid, bassAddr, size)
+	strDD = 'su -c dd if=/proc/%s/mem of=/sdcard/dump.so skip=%s ibs=1 count=%s' % (pid, base_address, size)
 	result, recvbuf = my_adbshell_server.adb_server(strDD)
 	if 1 == result:
 		print recvbuf
@@ -140,10 +143,13 @@ def main():
 	except IOError, e:
 		print e
 		return
-	except e:
-		print e
+
+	size_of_dump = os.path.getsize('d:\\dump.so')
+	if size != size_of_dump:
+		print 'dump fail'
 		return
 
+	result = fix_sofile('d:\\dump.so', 'd:\\fix_dump.so', base_address)
 
 if __name__ == '__main__' :
 	main()
