@@ -106,7 +106,7 @@ def getSOAddrByName(SOName,buf):
 			for i in addr:
 				addrs.append(i)
 	if addrs == []:  # 当地址为空的时候,提示找不到目标动态库
-		return [0,0]
+		return 0,0
 	else:
 		addrStart = int(addrs[0],16)
 		addrEnd = int(addrs[-1],16)
@@ -176,21 +176,73 @@ def main111():
 def main():
 	app_names = ['com.obdstar.x300dp', 'com.xtooltech.PS60', 'com.xtooltech.i80PAD']
 	my_adbshell_server = ADB_SHELL.adbShell()
+
 	print 'open adb shell'
-	my_adbshell_server.adb_server('')
-	recvbuf = my_adbshell_server.adb_server('su -c ps')
-	for appName in app_names:
-		pid = findPIDFromAppname(appName,recvbuf)
-		if 0 != pid:
-			break
-	if 0 == pid :
-		print 'Can find any apps!'
+	result, recvbuf = my_adbshell_server.adb_server('')
+	if 1 == result:
+		print recvbuf
 		return
 
+	print 'switch to super user'
+	result, recvbuf = my_adbshell_server.adb_server('su')
+	if 1 == result:
+		print recvbuf
+		return
+
+	print 'get list of apps'
+	result, recvbuf = my_adbshell_server.adb_server('su -c ps')
+	if 1 == result:
+		print recvbuf
+		return
+	else:
+		print 'search for target~s pid'
+		for appname in app_names:
+			pid = findPIDFromAppname(appname, recvbuf)
+			if 0 != pid:
+				break
+		if 0 == pid :
+			print 'Can find any apps!'
+			return
+
+	print 'get target~s memory'
 	 #获取目标内存地址
 	strGetMem = 'su -c ' + 'cat /proc/%s/maps' %(pid)
-	recvbuf = my_adbshell_server.adb_server(strGetMem)
-	print recvbuf
+	result, recvbuf = my_adbshell_server.adb_server(strGetMem)
+	if 1 == result:
+		print recvbuf
+		return
+	else:
+		print 'search for the address and size of target~s sofile'
+		if appname == 'com.obdstar.x300dp':
+			bassAddr, size = getSOAddrByName('Diag.so', recvbuf)
+		else:
+			bassAddr, size = getSOAddrByName('libscan.so', recvbuf)
+		if (0 == bassAddr) and (0 == size):
+			print 'can found the sofile'
+			return
+
+	print 'dump!'
+	# strDD = 'dd if=/proc/%s/mem of=/sdcard/dump.so skip=%s ibs=1 count=%s' %(pid,bassAddr,size)
+	strDD = 'su -c dd if=/proc/%s/mem of=/sdcard/dump.so skip=%s ibs=1 count=%s' % (pid, bassAddr, size)
+	s = adbConnect()
+	adbshellCMD(s, strDD)
+	time.sleep(20)
+	recv = adbshellRecv(s)
+	print recv
+	s.close()
+	time.sleep(5)
+
+	print u'adb pull to d:\\'
+	# 偷懒了就直接用系统调用adb的pull命令把文件传上来
+	try:
+		adb_pull = subprocess.Popen(['adb','pull','/sdcard/dump.so','d:\\'])
+		adb_pull.wait()
+	except IOError, e:
+		print e
+		return
+	except e:
+		print e
+		return
 
 
 if __name__ == '__main__' :

@@ -7,9 +7,15 @@ import socket
 class adbShell():
 	"""adb shell的类"""
 
-	def __init__(self):
-		self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-		self.socket.settimeout(10)
+	#def __init__(self):
+	#	resp = self.adb_connect()
+	#	if 'OKAY' != resp:
+	#		self.is_connected = False
+	#	else:
+	#		self.is_connected = True
+
+	#def is_connect_to_device(self):
+	#	return self.is_connected
 
 	def adb_send_command(self, command):
 		"""adb发送指令"""
@@ -29,7 +35,7 @@ class adbShell():
 		"""adb接收完整的数据"""
 		resp = self.adb_recvice(4)
 		if 'OKAY' != resp:
-			return [1, resp]
+			return 1, resp
 		rbuf = ''  # 以字符串的形式呈现
 		while True:
 			try:
@@ -41,16 +47,24 @@ class adbShell():
 					break
 				else:
 					rbuf += resp
-		return rbuf
+		return 0, rbuf
 
 	def adb_connect(self):
 		"""创建链接"""
+		self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+		self.socket.settimeout(10)
+		count = 0
 		while True:
 			try:
 				self.socket.connect(('127.0.0.1', 5037))
 			except:
-				os.system('adb start-server')
-				continue
+				if 5 != count:
+					# 尝试连接5次
+					os.system('adb start-server')
+					count = count + 1
+					continue
+				else:
+					return 'ERRO'
 			else:
 				break
 		req_msg = 'host:transport-any'
@@ -60,16 +74,17 @@ class adbShell():
 
 	def adb_server(self, command):
 		"""adb服务"""
-		conn_statue = self.adb_connect()
-		if conn_statue != 'OKAY':
-			return [1, 'unable to connect any devices']
+		is_connected = self.adb_connect()
+		if 'OKAY' != is_connected:
+			return [1, 'Can not connect to any devices']
 		self.adbshell_send_command(command)
-		recv_data = self.adb_recvice_data()
-		return [0, recv_data]
+		error_code, recv_data = self.adb_recvice_data()
+		return error_code, recv_data
 
 
 if __name__ == '__main__':
 	"""测试用"""
 	test = adbShell()
-	result = test.adb_server('ps')
+	result = test.adb_server('')
+	result = test.adb_server('su -c ps')
 	print result[1]
