@@ -87,15 +87,24 @@ def main():
 	if 1 == result:
 		print recvbuf
 		return
+	elif 'root' in recvbuf:
+		cmd_ps = 'ps'
+		cmd_cat = 'cat /proc/%s/maps'
+		cmd_DD = 'dd if=/proc/%s/mem of=/sdcard/dump.so skip=%s ibs=1 count=%s'
+	else:
+		cmd_ps = 'su -c ps'
+		cmd_cat = 'su -c cat /proc/%s/maps'
+		cmd_DD = 'su -c dd if=/proc/%s/mem of=/sdcard/dump.so skip=%s ibs=1 count=%s'
 
-	print '>>>>switch to super user'
-	result, recvbuf = my_adbshell_server.adb_server('su')
-	if 1 == result:
-		print recvbuf
-		return
+		print '>>>>switch to super user'
+		result, recvbuf = my_adbshell_server.adb_server('su')
+		if 1 == result:
+			print recvbuf
+			return
 
 	print '>>>>get list of apps'
-	result, recvbuf = my_adbshell_server.adb_server('su -c ps')
+	# result, recvbuf = my_adbshell_server.adb_server('su -c ps')
+	result, recvbuf = my_adbshell_server.adb_server(cmd_ps)
 	if 1 == result:
 		print recvbuf
 		return
@@ -112,21 +121,31 @@ def main():
 
 	print '>>>>get target~s memory'
 	 #获取目标内存地址
-	strGetMem = 'su -c ' + 'cat /proc/%s/maps' %(pid)
+	# strGetMem = 'su -c ' + 'cat /proc/%s/maps' %(pid)
+	strGetMem = cmd_cat %(pid)
 	result, recvbuf = my_adbshell_server.adb_server(strGetMem)
 	if 1 == result:
 		print recvbuf
 		return
 	else:
 		print '>>>>search for the address and size of %s' %(target[1])
+
+		try:
+			f = open('a.txt','w')
+			f.write(recvbuf)
+			f.close()
+		except IOError, e:
+			print e
+
 		base_address, size = getSOAddrByName(target[1], recvbuf)
 		if (0 == base_address) and (0 == size):
 			print '    can found the sofile'
 			return
-		print '    %s~s address = %d\n    %s~s size = %d' %(target[1], base_address, target[1], size)
+		print '    %s~s address = %d (0x%X)\n    %s~s size = %d (0x%X)' %(target[1], base_address, base_address, target[1], size, size)
 
 	print '>>>>dump!'
-	strDD = 'su -c dd if=/proc/%s/mem of=/sdcard/dump.so skip=%s ibs=1 count=%s' % (pid, base_address, size)
+	# strDD = 'su -c dd if=/proc/%s/mem of=/sdcard/dump.so skip=%s ibs=1 count=%s' % (pid, base_address, size)
+	strDD = cmd_DD %(pid, base_address, size)
 	result, recvbuf = my_adbshell_server.adb_server(strDD)
 	if 1 == result:
 		print recvbuf
@@ -149,8 +168,14 @@ def main():
 		print 'dump fail'
 		return
 
-	result = fix_sofile('d:\\dump.so', 'd:\\fix_dump.so', base_address)
+	print '>>>>fixxing dump.so to fix_dump.so'
+	str_fixfile = 'd:\\fix_%08X.so' %base_address
+	result = Fix_SO.fix_sofile('d:\\dump.so', str_fixfile, base_address)
+	if 0 == result:
+		print 'Program finish'
+	else:
+		print 'Fix so fail'
 
 if __name__ == '__main__' :
 	main()
-	print 'Program Finish'
+

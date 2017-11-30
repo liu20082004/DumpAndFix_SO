@@ -7,16 +7,6 @@ import socket
 class adbShell():
 	"""adb shell的类"""
 
-	# def __init__(self):
-	#	resp = self.adb_connect()
-	#	if 'OKAY' != resp:
-	#		self.is_connected = False
-	#	else:
-	#		self.is_connected = True
-
-	# def is_connect_to_device(self):
-	#	return self.is_connected
-
 	def adb_send_command(self, command):
 		"""adb发送指令"""
 		self.socket.sendall('%04x' % (len(command)))
