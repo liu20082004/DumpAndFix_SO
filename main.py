@@ -150,23 +150,24 @@ def main():
 	# 通过20s的延时来等待DD指令的完成
 	#time.sleep(20)
 
-	print u'>>>>adb pull to d:\\'
+	curdir = os.getcwd()  # 获取当前目录
+	print '>>>>adb pull to ' + curdir
 	# 偷懒了就直接用系统调用adb的pull命令把文件传上来
 	try:
-		adb_pull = subprocess.Popen(['adb','pull','/sdcard/dump.so','d:\\'])
+		adb_pull = subprocess.Popen(['adb', 'pull', '/sdcard/dump.so', curdir])
 		adb_pull.wait()
 	except IOError, e:
 		print e
 		return
 
-	size_of_dump = os.path.getsize('d:\\dump.so')
+	size_of_dump = os.path.getsize(curdir + '\\dump.so')
 	if size != size_of_dump:
 		print 'dump fail'
 		return
 
 	print '>>>>fixxing dump.so to fix_dump.so'
-	str_fixfile = 'd:\\fix_%08X.so' %base_address
-	result = Fix_SO.fix_sofile('d:\\dump.so', str_fixfile, base_address)
+	str_fixfile = curdir + '\\fix_%08X.so' %base_address
+	result = Fix_SO.fix_sofile(curdir + '\\dump.so', str_fixfile, base_address)
 	if 0 == result:
 		print 'Program finish'
 	else:

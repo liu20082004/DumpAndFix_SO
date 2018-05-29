@@ -87,7 +87,7 @@ def fix_sofile(str_file_input, str_file_output, base_addr):
 
 
 if __name__ == '__main__':
-	result = fix_sofile('d:\\dump.so', 'd:\\fix_dump.so', 0xa32d2000)
+	result = fix_sofile('d:\\dump.so', 'd:\\fix_dump.so', 0x79efa000)
 	if 0 == result:
 		raw_input('Program Finish')
 	else:
