@@ -27,20 +27,32 @@ def findPIDFromAppname(appname,buf):
 
 def getSOAddrByName(SOName,buf):
 	buf = buf.split('\r\n')
-	addrs = []
+	addr_start = 0
+	addr_end = 0
+	flag_next = False
+	flag_start = False
 	for eachline in buf:
-		if '' == eachline:
+		item = eachline.split()
+		if -1 != eachline.find(SOName):
+			#item = eachline.split()
+			if not flag_start:  # 第一次找到
+				addr_start = item[0].split('-')[0]
+				flag_start = True
+				flag_next = True
+			else:
+				addr_end = item[0].split('-')[1]
+		elif "" == eachline:
 			continue
-		if -1 != eachline.find(SOName) :
-			item = eachline.split()
-			addr = item[0].split('-')
-			for i in addr:
-				addrs.append(i)
-	if addrs == []:  # 当地址为空的时候,提示找不到目标动态库
-		return 0,0
+		elif '0' == item[-1] and flag_next:  # 中间存在空行的情况
+			addr_end = item[0].split('-')[1]
+		else:
+			flag_next = False
+
+	if not addr_start or not addr_end:  # 当地址为空的时候,提示找不到目标动态库
+		return 0, 0
 	else:
-		addrStart = int(addrs[0],16)
-		addrEnd = int(addrs[-1],16)
+		addrStart = int(addr_start, 16)
+		addrEnd = int(addr_end, 16)
 		size = addrEnd - addrStart
 		return addrStart,size
 
@@ -60,6 +72,27 @@ def get_target_info():
 
 def fix_sofile(file_in, file_out, address_base):
 	pass
+
+
+def DumpData(adb_shell, user, pid, skip, count, outFile):
+	"""拷贝数据,成功返回0"""
+	cmd_DD = "%s dd if=/proc/%s/mem of=/sdcard/%s skip=%s ibs=1 count=%s" % (user, pid, outFile, skip, count)
+	result, recvbuf = adb_shell.adb_server(cmd_DD)
+	if 1 == result:
+		print recvbuf
+	return result
+
+
+def PullFile(source, dest):
+	"""pull到PC"""
+	try:
+		adb_pull = subprocess.Popen(['adb', 'pull', source, dest])
+		adb_pull.wait()
+		return 0
+	except IOError, e:
+		print e
+		return 1
+
 
 
 def main():
@@ -94,12 +127,12 @@ def main():
 		print '>>>>switch to super user'
 		result, recvbuf = my_adbshell_server.adb_server('su')
 		if 1 == result:
-			print recvbuf
 			return
 
 	cmd_ps = str_sysuser + 'ps'
 	cmd_cat = str_sysuser + 'cat /proc/%s/maps'
-	cmd_DD = str_sysuser + 'dd if=/proc/%s/mem of=/sdcard/dump.so skip=%s ibs=1 count=%s'
+	# cmd_DD = str_sysuser + 'dd if=/proc/%s/mem of=/sdcard/dump.so skip=%s ibs=1 count=%s'
+	# cmd_DD_sub = str_sysuser + 'dd if=/proc/%s/mem of=/sdcard/temp%d.so skip=%s ibs=1 count=%s'
 
 	print '>>>>get list of apps'
 	result, recvbuf = my_adbshell_server.adb_server(cmd_ps)
@@ -107,6 +140,7 @@ def main():
 		print recvbuf
 		return
 	else:
+		print recvbuf
 		print '>>>>search for target~s pid'
 		for target in target_info:
 			pid = findPIDFromAppname(target[0], recvbuf)
@@ -141,31 +175,48 @@ def main():
 		print '    %s~s address = %d (0x%X)\n    %s~s size = %d (0x%X)' %(target[1], base_address, base_address, target[1], size, size)
 
 	print '>>>>dump!'
-	strDD = cmd_DD %(pid, base_address, size)
-	result, recvbuf = my_adbshell_server.adb_server(strDD)
-	if 1 == result:
-		print recvbuf
-		return
-	print recvbuf
-	# 通过20s的延时来等待DD指令的完成
-	#time.sleep(20)
-
+	countOfFile = size / 0x100000  # 按照1M来划分
+	modOfFile = size % 0x100000
+	dump_data = ""
 	curdir = os.getcwd()  # 获取当前目录
-	print '>>>>adb pull to ' + curdir
-	# 偷懒了就直接用系统调用adb的pull命令把文件传上来
-	try:
-		adb_pull = subprocess.Popen(['adb', 'pull', '/sdcard/dump.so', curdir])
-		adb_pull.wait()
-	except IOError, e:
-		print e
-		return
+	tempFileName = "temp.so"
+	pull_file_name = "/sdcard/" + tempFileName
+	curPCFileName = curdir + "\\" + tempFileName
+	count = 0
+	for i in range(0, countOfFile):
+		if not DumpData(my_adbshell_server, str_sysuser, pid, base_address+i*0x100000, 0x100000, tempFileName) and not PullFile(pull_file_name, curdir):
+			with open(curPCFileName, "rb") as tempFile:
+				dump_data += tempFile.read()
+			count += 1
+			os.remove(tempFileName)
+			my_adbshell_server.adb_server("rm -r " + pull_file_name)
+			continue
+		else:
+			print("Dump Error")
+			return 0
+
+	if modOfFile:
+		if not DumpData(my_adbshell_server, str_sysuser, pid, base_address+count*0x100000, modOfFile, tempFileName) and not PullFile(pull_file_name, curdir):
+			with open(curPCFileName, "rb") as tempFile:
+				dump_data += tempFile.read()
+			os.remove(tempFileName)
+			my_adbshell_server.adb_server("rm -r " + pull_file_name)
+		else:
+			print("Dump Error")
+			return 0
+
+	# 合并
+	if dump_data:
+		with open(curdir + '\\dump.so', "wb") as dumpFile:
+			dumpFile.write(dump_data)
 
 	size_of_dump = os.path.getsize(curdir + '\\dump.so')
 	if size != size_of_dump:
 		print 'dump fail'
-		return
-
-	print '>>>>fixxing dump.so to fix_dump.so'
+		#return
+		print '>>>>try to fixxing dump.so to fix_dump.so'  # 发现DD出来的数据小于size的情况,莫名其妙...
+	else:
+		print '>>>>fixxing dump.so to fix_dump.so'
 	str_fixfile = curdir + '\\fix_%08X.so' %base_address
 	result = Fix_SO.fix_sofile(curdir + '\\dump.so', str_fixfile, base_address)
 	if 0 == result:
